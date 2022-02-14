@@ -1,0 +1,11 @@
+linters:
+  enable-all: true
+  disable:
+    - wsl
+    - exhaustivestruct
+    - testpackage
+    - varnamelen
+    - nlreturn
+    - forcetypeassert
+run:
+  timeout: 3m
