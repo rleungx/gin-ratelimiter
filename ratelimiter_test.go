@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -35,13 +34,11 @@ func TestUpdateConcurrencyLimiter(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			res := httptest.NewRecorder()
-			r.ServeHTTP(res, req)
-			assert.Equal(t, http.StatusNoContent, res.Code)
+			success204(t, r, req)
 		}()
 	}
 	time.Sleep(200 * time.Millisecond)
-	failTooManyRequests(t, r, req, testPath)
+	fail429(t, r, req)
 	wg.Wait()
 
 	limit, current := l.GetConcurrencyLimiterStatus(testPath)
@@ -56,13 +53,11 @@ func TestUpdateConcurrencyLimiter(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			res := httptest.NewRecorder()
-			r.ServeHTTP(res, req)
-			assert.Equal(t, http.StatusNoContent, res.Code)
+			success204(t, r, req)
 		}()
 	}
 	time.Sleep(200 * time.Millisecond)
-	failTooManyRequests(t, r, req, testPath)
+	fail429(t, r, req)
 	wg.Wait()
 }
 
@@ -79,11 +74,9 @@ func TestUpdateQPSLimiter(t *testing.T) {
 
 	req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet, testPath, nil)
 	assert.NoError(t, err)
-	res := httptest.NewRecorder()
-	r.ServeHTTP(res, req)
-	assert.Equal(t, http.StatusNoContent, res.Code)
+	success204(t, r, req)
 
-	failTooManyRequests(t, r, req, testPath)
+	fail429(t, r, req)
 
 	limit, burst := l.GetQPSLimiterStatus(testPath)
 	assert.Equal(t, rate.Limit(1), limit)
@@ -95,24 +88,27 @@ func TestUpdateQPSLimiter(t *testing.T) {
 	time.Sleep(time.Second)
 
 	for i := 0; i < 10; i++ {
-		res = httptest.NewRecorder()
-		r.ServeHTTP(res, req)
 		if i < 5 {
-			assert.Equal(t, http.StatusNoContent, res.Code)
+			success204(t, r, req)
 		} else {
-			assert.Equal(t, http.StatusTooManyRequests, res.Code)
+			fail429(t, r, req)
 		}
 	}
-	failTooManyRequests(t, r, req, testPath)
+	fail429(t, r, req)
 }
 
-func failTooManyRequests(t *testing.T, r http.Handler, req *http.Request, testPath string) {
+func fail429(t *testing.T, r http.Handler, req *http.Request) {
 	t.Helper()
 
 	res := httptest.NewRecorder()
 	r.ServeHTTP(res, req)
 	assert.Equal(t, http.StatusTooManyRequests, res.Code)
-	actual, err := strconv.Unquote(res.Body.String())
-	assert.NoError(t, err)
-	assert.Equal(t, testPath, actual)
+}
+
+func success204(t *testing.T, r http.Handler, req *http.Request) {
+	t.Helper()
+
+	res := httptest.NewRecorder()
+	r.ServeHTTP(res, req)
+	assert.Equal(t, http.StatusNoContent, res.Code)
 }
