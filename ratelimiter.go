@@ -8,15 +8,20 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// Limiter is a controller for the request rate.
 type Limiter struct {
 	qpsLimiter         sync.Map
 	concurrencyLimiter sync.Map
 }
 
+// NewLimiter returns a global limiter which can be updated in the later.
 func NewLimiter() *Limiter {
 	return &Limiter{}
 }
 
+// SetLimiter mainly does two things:
+// 1. create a limiter for a path if the options are specified.
+// 2. decide if the request can be handle through the limiter setting and status.
 func (l *Limiter) SetLimiter(opts ...Option) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		for _, opt := range opts {
@@ -24,7 +29,7 @@ func (l *Limiter) SetLimiter(opts ...Option) gin.HandlerFunc {
 		}
 
 		path := c.Request.URL.Path
-		if !l.Allow(path) {
+		if !l.allow(path) {
 			c.AbortWithStatus(http.StatusTooManyRequests)
 			return
 		}
@@ -37,7 +42,7 @@ func (l *Limiter) SetLimiter(opts ...Option) gin.HandlerFunc {
 	}
 }
 
-func (l *Limiter) Allow(path string) bool {
+func (l *Limiter) allow(path string) bool {
 	var cl *concurrencyLimiter
 	var ok bool
 	if limiter, exist := l.concurrencyLimiter.Load(path); exist {
@@ -58,6 +63,7 @@ func (l *Limiter) Allow(path string) bool {
 	return true
 }
 
+// UpdateQPSLimiter updates the settings for a given path's QPS limiter.
 func (l *Limiter) UpdateQPSLimiter(path string, limit rate.Limit, burst int) {
 	if limiter, exist := l.qpsLimiter.Load(path); exist {
 		limiter.(*rate.Limiter).SetLimit(limit)
@@ -67,6 +73,7 @@ func (l *Limiter) UpdateQPSLimiter(path string, limit rate.Limit, burst int) {
 	}
 }
 
+// UpdateQPSLimiter updates the settings for a given path's concurrency limiter.
 func (l *Limiter) UpdateConcurrencyLimiter(path string, limit uint64) {
 	if limiter, exist := l.concurrencyLimiter.Load(path); exist {
 		limiter.(*concurrencyLimiter).setLimit(limit)
@@ -75,6 +82,7 @@ func (l *Limiter) UpdateConcurrencyLimiter(path string, limit uint64) {
 	}
 }
 
+// GetQPSLimiterStatus returns the status of a given path's QPS limiter.
 func (l *Limiter) GetQPSLimiterStatus(path string) (limit rate.Limit, burst int) {
 	if limiter, exist := l.qpsLimiter.Load(path); exist {
 		return limiter.(*rate.Limiter).Limit(), limiter.(*rate.Limiter).Burst()
@@ -83,6 +91,7 @@ func (l *Limiter) GetQPSLimiterStatus(path string) (limit rate.Limit, burst int)
 	return 0, 0
 }
 
+// GetQPSLimiterStatus returns the status of a given path's concurrency limiter.
 func (l *Limiter) GetConcurrencyLimiterStatus(path string) (uint64, uint64) {
 	if limiter, exist := l.concurrencyLimiter.Load(path); exist {
 		return limiter.(*concurrencyLimiter).getLimit(), limiter.(*concurrencyLimiter).getCurrent()

@@ -1,4 +1,10 @@
 # gin-ratelimiter
+
+[![Run Tests](https://github.com/rleungx/gin-ratelimiter/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/rleungx/gin-ratelimiter/actions/workflows/go.yml)
+[![codecov](https://codecov.io/gh/rleungx/gin-ratelimiter/branch/main/graph/badge.svg)](https://codecov.io/gh/rleungx/gin-ratelimiter)
+[![Go Report Card](https://goreportcard.com/badge/github.com/rleungx/gin-ratelimiter)](https://goreportcard.com/report/github.com/rleungx/gin-ratelimiter)
+[![GoDoc](https://godoc.org/github.com/rleungx/gin-ratelimiter?status.svg)](https://godoc.org/github.com/rleungx/gin-ratelimiter)
+
 The gin-ratelimiter is a middleware for limiting the request rate under [Gin framework](https://github.com/gin-gonic/gin) based on [golang.org/x/time/rate](golang.org/x/time/rate)
 
 ## Usage
