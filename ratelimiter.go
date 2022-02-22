@@ -28,7 +28,7 @@ func (l *Limiter) SetLimiter(opts ...Option) gin.HandlerFunc {
 			opt(c, l)
 		}
 
-		path := c.Request.URL.Path
+		path := c.FullPath()
 		if !l.allow(path) {
 			c.AbortWithStatus(http.StatusTooManyRequests)
 			return
