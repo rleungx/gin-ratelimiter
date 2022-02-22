@@ -18,7 +18,6 @@ func TestUpdateConcurrencyLimiter(t *testing.T) {
 
 	testPath := "/test/concurrency"
 	r := gin.New()
-
 	l := NewLimiter()
 	context.Background()
 	r.GET(testPath, l.SetLimiter(WithConcurrencyLimiter(10)), func(c *gin.Context) {
@@ -34,11 +33,11 @@ func TestUpdateConcurrencyLimiter(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			success204(t, r, req)
+			checkResponseCode(t, r, req, http.StatusNoContent)
 		}()
 	}
 	time.Sleep(200 * time.Millisecond)
-	fail429(t, r, req)
+	checkResponseCode(t, r, req, http.StatusTooManyRequests)
 	wg.Wait()
 
 	limit, current := l.GetConcurrencyLimiterStatus(testPath)
@@ -53,11 +52,11 @@ func TestUpdateConcurrencyLimiter(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			success204(t, r, req)
+			checkResponseCode(t, r, req, http.StatusNoContent)
 		}()
 	}
 	time.Sleep(200 * time.Millisecond)
-	fail429(t, r, req)
+	checkResponseCode(t, r, req, http.StatusTooManyRequests)
 	wg.Wait()
 }
 
@@ -66,7 +65,6 @@ func TestUpdateQPSLimiter(t *testing.T) {
 
 	testPath := "/test/qps"
 	r := gin.New()
-
 	l := NewLimiter()
 	r.GET(testPath, l.SetLimiter(WithQPSLimiter(rate.Every(time.Second), 1)), func(c *gin.Context) {
 		c.JSON(http.StatusNoContent, nil)
@@ -74,9 +72,9 @@ func TestUpdateQPSLimiter(t *testing.T) {
 
 	req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet, testPath, nil)
 	assert.NoError(t, err)
-	success204(t, r, req)
+	checkResponseCode(t, r, req, http.StatusNoContent)
 
-	fail429(t, r, req)
+	checkResponseCode(t, r, req, http.StatusTooManyRequests)
 
 	limit, burst := l.GetQPSLimiterStatus(testPath)
 	assert.Equal(t, rate.Limit(1), limit)
@@ -89,26 +87,37 @@ func TestUpdateQPSLimiter(t *testing.T) {
 
 	for i := 0; i < 10; i++ {
 		if i < 5 {
-			success204(t, r, req)
+			checkResponseCode(t, r, req, http.StatusNoContent)
 		} else {
-			fail429(t, r, req)
+			checkResponseCode(t, r, req, http.StatusTooManyRequests)
 		}
 	}
-	fail429(t, r, req)
+	checkResponseCode(t, r, req, http.StatusTooManyRequests)
 }
 
-func fail429(t *testing.T, r http.Handler, req *http.Request) {
+func TestQPSLimiter(t *testing.T) {
+	t.Parallel()
+
+	testPath := "/test/qps"
+	r := gin.New()
+	l := NewLimiter()
+	r.GET(testPath, l.SetLimiter(WithQPSLimiter(rate.Every(time.Second), 1)), func(c *gin.Context) {
+		c.JSON(http.StatusNoContent, nil)
+	})
+
+	req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet, testPath, nil)
+	assert.NoError(t, err)
+	checkResponseCode(t, r, req, http.StatusNoContent)
+
+	checkResponseCode(t, r, req, http.StatusTooManyRequests)
+	time.Sleep(time.Second)
+	checkResponseCode(t, r, req, http.StatusNoContent)
+}
+
+func checkResponseCode(t *testing.T, r http.Handler, req *http.Request, expectCode int) {
 	t.Helper()
 
 	res := httptest.NewRecorder()
 	r.ServeHTTP(res, req)
-	assert.Equal(t, http.StatusTooManyRequests, res.Code)
-}
-
-func success204(t *testing.T, r http.Handler, req *http.Request) {
-	t.Helper()
-
-	res := httptest.NewRecorder()
-	r.ServeHTTP(res, req)
-	assert.Equal(t, http.StatusNoContent, res.Code)
+	assert.Equal(t, expectCode, res.Code)
 }

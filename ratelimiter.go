@@ -14,10 +14,7 @@ type Limiter struct {
 }
 
 func NewLimiter() *Limiter {
-	return &Limiter{
-		qpsLimiter:         sync.Map{},
-		concurrencyLimiter: sync.Map{},
-	}
+	return &Limiter{}
 }
 
 func (l *Limiter) SetLimiter(opts ...Option) gin.HandlerFunc {
@@ -32,31 +29,33 @@ func (l *Limiter) SetLimiter(opts ...Option) gin.HandlerFunc {
 			return
 		}
 		c.Next()
-		cl, exist := l.concurrencyLimiter.Load(path)
-		if exist {
-			cl.(*concurrencyLimiter).release()
+		if limiter, exist := l.concurrencyLimiter.Load(path); exist {
+			if cl, ok := limiter.(*concurrencyLimiter); ok {
+				cl.release()
+			}
 		}
 	}
 }
 
 func (l *Limiter) Allow(path string) bool {
-	v1, exist1 := l.qpsLimiter.Load(path)
-	v2, exist2 := l.concurrencyLimiter.Load(path)
-
-	if !exist1 && !exist2 {
-		return false
-	}
-	if exist1 && exist2 {
-		return v2.(*concurrencyLimiter).allow() && v1.(*rate.Limiter).Allow()
-	}
-	if exist1 {
-		return v1.(*rate.Limiter).Allow()
-	}
-	if exist2 {
-		return v2.(*concurrencyLimiter).allow()
+	var cl *concurrencyLimiter
+	var ok bool
+	if limiter, exist := l.concurrencyLimiter.Load(path); exist {
+		if cl, ok = limiter.(*concurrencyLimiter); ok && !cl.allow() {
+			return false
+		}
 	}
 
-	return false
+	if limiter, exist := l.qpsLimiter.Load(path); exist {
+		if ql, ok := limiter.(*rate.Limiter); ok && !ql.Allow() {
+			if cl != nil {
+				cl.release()
+			}
+			return false
+		}
+	}
+
+	return true
 }
 
 func (l *Limiter) UpdateQPSLimiter(path string, limit rate.Limit, burst int) {

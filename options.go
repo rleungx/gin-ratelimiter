@@ -9,14 +9,14 @@ type Option func(*gin.Context, *Limiter)
 
 func WithConcurrencyLimiter(limit uint64) Option {
 	return func(c *gin.Context, l *Limiter) {
-		path := c.Request.URL.Path
-		l.concurrencyLimiter.LoadOrStore(path, newConcurrencyLimiter(limit))
+		// Ignore the return value since we don't care about it.
+		l.concurrencyLimiter.LoadOrStore(c.Request.URL.Path, newConcurrencyLimiter(limit))
 	}
 }
 
 func WithQPSLimiter(limit rate.Limit, burst int) Option {
 	return func(c *gin.Context, l *Limiter) {
-		path := c.Request.URL.Path
-		l.qpsLimiter.LoadOrStore(path, rate.NewLimiter(limit, burst))
+		// Ignore the return value since we don't care about it.
+		l.qpsLimiter.LoadOrStore(c.Request.URL.Path, rate.NewLimiter(limit, burst))
 	}
 }
