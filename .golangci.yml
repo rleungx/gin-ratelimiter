@@ -7,5 +7,7 @@ linters:
     - varnamelen
     - nlreturn
     - forcetypeassert
+    - funlen
+    - depguard
 run:
   timeout: 3m

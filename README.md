@@ -27,9 +27,7 @@ See the [example](examples/main.go).
 package main
 
 import (
-	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	ratelimiter "github.com/rleungx/gin-ratelimiter"
@@ -40,27 +38,34 @@ func main() {
 
 	l := ratelimiter.NewLimiter()
 	// Example ping request.
-	r.GET("/ping", l.SetLimiter(ratelimiter.WithConcurrencyLimiter(1), ratelimiter.WithQPSLimiter(1, 10)),
+	r.GET("/ping", l.SetLimiter(ratelimiter.WithConcurrencyLimiter(1), ratelimiter.WithQPSLimiter(3, 3)),
 		func(c *gin.Context) {
-			c.String(http.StatusOK, "pong "+fmt.Sprint(time.Now().UnixNano()))
+			c.String(http.StatusOK, "")
 		})
 
-	// Listen and Server in 0.0.0.0:8888
-	r.Run(":8888")
+	// Listen and Server in 0.0.0.0:8880
+	r.Run(":8880")
 }
 ```
 
-The output with 11 requests:
+The output with 4 requests:
 ```
-status code: 200, response: pong 1645506503302297793
-status code: 200, response: pong 1645506503302647317
-status code: 200, response: pong 1645506503302812520
-status code: 200, response: pong 1645506503303018293
-status code: 200, response: pong 1645506503303311303
-status code: 200, response: pong 1645506503303427116
-status code: 200, response: pong 1645506503303540257
-status code: 200, response: pong 1645506503303677963
-status code: 200, response: pong 1645506503303826727
-status code: 200, response: pong 1645506503303956919
-status code: 429, response:
+HTTP/1.1 200 OK
+Content-Type: text/plain; charset=utf-8
+Date: Wed, 12 Feb 2025 08:34:44 GMT
+Content-Length: 0
+
+HTTP/1.1 200 OK
+Content-Type: text/plain; charset=utf-8
+Date: Wed, 12 Feb 2025 08:34:44 GMT
+Content-Length: 0
+
+HTTP/1.1 200 OK
+Content-Type: text/plain; charset=utf-8
+Date: Wed, 12 Feb 2025 08:34:44 GMT
+Content-Length: 0
+
+HTTP/1.1 429 Too Many Requests
+Date: Wed, 12 Feb 2025 08:34:44 GMT
+Content-Length: 0
 ```
