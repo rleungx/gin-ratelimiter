@@ -2,7 +2,7 @@ linters:
   enable-all: true
   disable:
     - wsl
-    - exhaustivestruct
+    - exhaustruct
     - testpackage
     - varnamelen
     - nlreturn

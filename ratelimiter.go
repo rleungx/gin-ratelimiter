@@ -83,7 +83,7 @@ func (l *Limiter) UpdateConcurrencyLimiter(path string, limit uint64) {
 }
 
 // GetQPSLimiterStatus returns the status of a given path's QPS limiter.
-func (l *Limiter) GetQPSLimiterStatus(path string) (limit rate.Limit, burst int) {
+func (l *Limiter) GetQPSLimiterStatus(path string) (rate.Limit, int) {
 	if limiter, exist := l.qpsLimiter.Load(path); exist {
 		return limiter.(*rate.Limiter).Limit(), limiter.(*rate.Limiter).Burst()
 	}

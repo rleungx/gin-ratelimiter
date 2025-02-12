@@ -10,7 +10,7 @@ The gin-ratelimiter is a middleware for limiting the request rate under [Gin fra
 ## Usage
 
 ```go
-go get -u github.com/rleungx/gin-ratelimiter
+go get github.com/rleungx/gin-ratelimiter
 ```
 
 And import it in your code:
