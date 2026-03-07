@@ -5,21 +5,21 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// Option is used to create a limiter with the optional settings.
+// Option configures limits for the current route.
 type Option func(*gin.Context, *Limiter)
 
-// WithConcurrencyLimiter creates a concurrency limiter for a given path if it doesn't exist.
-func WithConcurrencyLimiter(limit uint64) Option {
-	return func(c *gin.Context, l *Limiter) {
-		// Ignore the return value since we don't care about it.
-		l.concurrencyLimiter.LoadOrStore(c.FullPath(), newConcurrencyLimiter(limit))
+// WithConcurrencyLimit ensures the current route has a concurrency limiter
+// with the provided maximum number of in-flight requests.
+func WithConcurrencyLimit(limit uint64) Option {
+	return func(c *gin.Context, limiter *Limiter) {
+		limiter.ensureConcurrencyLimiter(c.FullPath(), limit)
 	}
 }
 
-// WithConcurrencyLimiter creates a QPS limiter for a given path if it doesn't exist.
-func WithQPSLimiter(limit rate.Limit, burst int) Option {
-	return func(c *gin.Context, l *Limiter) {
-		// Ignore the return value since we don't care about it.
-		l.qpsLimiter.LoadOrStore(c.FullPath(), rate.NewLimiter(limit, burst))
+// WithRateLimit ensures the current route has a token-bucket rate limiter with
+// the provided rate and burst values.
+func WithRateLimit(limit rate.Limit, burst int) Option {
+	return func(c *gin.Context, limiter *Limiter) {
+		limiter.ensureRateLimiter(c.FullPath(), limit, burst)
 	}
 }

@@ -8,15 +8,19 @@ import (
 )
 
 func main() {
-	r := gin.New()
+	router := gin.New()
+	limiter := ratelimiter.New()
 
-	l := ratelimiter.NewLimiter()
-	// Example ping request.
-	r.GET("/ping", l.SetLimiter(ratelimiter.WithConcurrencyLimiter(1), ratelimiter.WithQPSLimiter(3, 3)),
+	router.GET(
+		"/ping",
+		limiter.Middleware(
+			ratelimiter.WithRateLimit(3, 3),
+			ratelimiter.WithConcurrencyLimit(1),
+		),
 		func(c *gin.Context) {
-			c.String(http.StatusOK, "")
-		})
+			c.String(http.StatusOK, "pong")
+		},
+	)
 
-	// Listen and Server in 0.0.0.0:8880
-	r.Run(":8880")
+	router.Run(":8880")
 }

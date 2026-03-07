@@ -8,94 +8,137 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// Limiter is a controller for the request rate.
+// Limiter manages per-route rate and concurrency limits.
+//
+// Routes are keyed by the pattern returned from gin.Context.FullPath.
 type Limiter struct {
-	qpsLimiter         sync.Map
-	concurrencyLimiter sync.Map
+	rateLimiters        sync.Map
+	concurrencyLimiters sync.Map
 }
 
-// NewLimiter returns a global limiter which can be updated in the later.
-func NewLimiter() *Limiter {
+// New returns a limiter that can be shared across routes and updated at runtime.
+func New() *Limiter {
 	return &Limiter{}
 }
 
-// SetLimiter mainly does two things:
-// 1. create a limiter for a path if the options are specified.
-// 2. decide if the request can be handle through the limiter setting and status.
-func (l *Limiter) SetLimiter(opts ...Option) gin.HandlerFunc {
+// Middleware returns a Gin middleware that applies the provided options to the
+// current route and rejects requests that exceed the configured thresholds.
+func (limiter *Limiter) Middleware(opts ...Option) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		for _, opt := range opts {
-			opt(c, l)
+			opt(c, limiter)
 		}
 
 		path := c.FullPath()
-		if !l.allow(path) {
+		concurrencyLimiter, allowed := limiter.allowRequest(path)
+		if !allowed {
 			c.AbortWithStatus(http.StatusTooManyRequests)
 			return
 		}
+
+		if concurrencyLimiter != nil {
+			defer concurrencyLimiter.release()
+		}
+
 		c.Next()
-		if limiter, exist := l.concurrencyLimiter.Load(path); exist {
-			if cl, ok := limiter.(*concurrencyLimiter); ok {
-				cl.release()
-			}
+	}
+}
+
+func (limiter *Limiter) allowRequest(path string) (*concurrencyLimiter, bool) {
+	concurrencyLimiter, exists := limiter.loadConcurrencyLimiter(path)
+	if exists && !concurrencyLimiter.tryAcquire() {
+		return nil, false
+	}
+
+	rateLimiter, exists := limiter.loadRateLimiter(path)
+	if exists && !rateLimiter.Allow() {
+		if concurrencyLimiter != nil {
+			concurrencyLimiter.release()
 		}
+		return nil, false
 	}
+
+	return concurrencyLimiter, true
 }
 
-func (l *Limiter) allow(path string) bool {
-	var cl *concurrencyLimiter
-	var ok bool
-	if limiter, exist := l.concurrencyLimiter.Load(path); exist {
-		if cl, ok = limiter.(*concurrencyLimiter); ok && !cl.allow() {
-			return false
-		}
+// UpdateRateLimit updates the rate limiter for path. If the route does not yet
+// have a rate limiter, one is created with the provided settings.
+func (limiter *Limiter) UpdateRateLimit(path string, limit rate.Limit, burst int) {
+	if rateLimiter, exists := limiter.loadRateLimiter(path); exists {
+		rateLimiter.SetLimit(limit)
+		rateLimiter.SetBurst(burst)
+		return
 	}
 
-	if limiter, exist := l.qpsLimiter.Load(path); exist {
-		if ql, ok := limiter.(*rate.Limiter); ok && !ql.Allow() {
-			if cl != nil {
-				cl.release()
-			}
-			return false
-		}
-	}
-
-	return true
+	limiter.rateLimiters.Store(path, rate.NewLimiter(limit, burst))
 }
 
-// UpdateQPSLimiter updates the settings for a given path's QPS limiter.
-func (l *Limiter) UpdateQPSLimiter(path string, limit rate.Limit, burst int) {
-	if limiter, exist := l.qpsLimiter.Load(path); exist {
-		limiter.(*rate.Limiter).SetLimit(limit)
-		limiter.(*rate.Limiter).SetBurst(burst)
-	} else {
-		l.qpsLimiter.Store(path, rate.NewLimiter(limit, burst))
+// UpdateConcurrencyLimit updates the concurrency limiter for path. If the route
+// does not yet have a concurrency limiter, one is created with the provided limit.
+func (limiter *Limiter) UpdateConcurrencyLimit(path string, limit uint64) {
+	if concurrencyLimiter, exists := limiter.loadConcurrencyLimiter(path); exists {
+		concurrencyLimiter.updateLimit(limit)
+		return
 	}
+
+	limiter.concurrencyLimiters.Store(path, newConcurrencyLimiter(limit))
 }
 
-// UpdateConcurrencyLimiter updates the settings for a given path's concurrency limiter.
-func (l *Limiter) UpdateConcurrencyLimiter(path string, limit uint64) {
-	if limiter, exist := l.concurrencyLimiter.Load(path); exist {
-		limiter.(*concurrencyLimiter).setLimit(limit)
-	} else {
-		l.concurrencyLimiter.Store(path, newConcurrencyLimiter(limit))
-	}
-}
-
-// GetQPSLimiterStatus returns the status of a given path's QPS limiter.
-func (l *Limiter) GetQPSLimiterStatus(path string) (rate.Limit, int) {
-	if limiter, exist := l.qpsLimiter.Load(path); exist {
-		return limiter.(*rate.Limiter).Limit(), limiter.(*rate.Limiter).Burst()
+// RateLimitStatus returns the configured rate and burst for path.
+// It returns zero values when the route has no rate limiter.
+func (limiter *Limiter) RateLimitStatus(path string) (rate.Limit, int) {
+	if rateLimiter, exists := limiter.loadRateLimiter(path); exists {
+		return rateLimiter.Limit(), rateLimiter.Burst()
 	}
 
 	return 0, 0
 }
 
-// GetConcurrencyLimiterStatus returns the status of a given path's concurrency limiter.
-func (l *Limiter) GetConcurrencyLimiterStatus(path string) (uint64, uint64) {
-	if limiter, exist := l.concurrencyLimiter.Load(path); exist {
-		return limiter.(*concurrencyLimiter).getLimit(), limiter.(*concurrencyLimiter).getCurrent()
+// ConcurrencyLimitStatus returns the configured concurrency limit and current
+// in-flight request count for path. It returns zero values when the route has
+// no concurrency limiter.
+func (limiter *Limiter) ConcurrencyLimitStatus(path string) (uint64, uint64) {
+	if concurrencyLimiter, exists := limiter.loadConcurrencyLimiter(path); exists {
+		return concurrencyLimiter.limitValue(), concurrencyLimiter.currentValue()
 	}
 
 	return 0, 0
+}
+
+func (limiter *Limiter) ensureRateLimiter(path string, limit rate.Limit, burst int) *rate.Limiter {
+	if existingLimiter, exists := limiter.loadRateLimiter(path); exists {
+		return existingLimiter
+	}
+
+	newLimiter := rate.NewLimiter(limit, burst)
+	actualLimiter, _ := limiter.rateLimiters.LoadOrStore(path, newLimiter)
+	return actualLimiter.(*rate.Limiter)
+}
+
+func (limiter *Limiter) ensureConcurrencyLimiter(path string, limit uint64) *concurrencyLimiter {
+	if existingLimiter, exists := limiter.loadConcurrencyLimiter(path); exists {
+		return existingLimiter
+	}
+
+	newLimiter := newConcurrencyLimiter(limit)
+	actualLimiter, _ := limiter.concurrencyLimiters.LoadOrStore(path, newLimiter)
+	return actualLimiter.(*concurrencyLimiter)
+}
+
+func (limiter *Limiter) loadRateLimiter(path string) (*rate.Limiter, bool) {
+	rawLimiter, exists := limiter.rateLimiters.Load(path)
+	if !exists {
+		return nil, false
+	}
+
+	return rawLimiter.(*rate.Limiter), true
+}
+
+func (limiter *Limiter) loadConcurrencyLimiter(path string) (*concurrencyLimiter, bool) {
+	rawLimiter, exists := limiter.concurrencyLimiters.Load(path)
+	if !exists {
+		return nil, false
+	}
+
+	return rawLimiter.(*concurrencyLimiter), true
 }

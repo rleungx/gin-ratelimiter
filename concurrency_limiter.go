@@ -1,56 +1,61 @@
 package ratelimiter
 
 import (
-	"sync"
+	"sync/atomic"
 )
 
 type concurrencyLimiter struct {
-	mu      sync.RWMutex
-	current uint64
-	limit   uint64
+	current atomic.Uint64
+	limit   atomic.Uint64
 }
 
 func newConcurrencyLimiter(limit uint64) *concurrencyLimiter {
-	return &concurrencyLimiter{limit: limit}
+	limiter := &concurrencyLimiter{}
+	limiter.limit.Store(limit)
+	return limiter
 }
 
-func (l *concurrencyLimiter) allow() bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
+func (limiter *concurrencyLimiter) tryAcquire() bool {
+	for {
+		current := limiter.current.Load()
+		limit := limiter.limit.Load()
 
-	if l.current+1 <= l.limit {
-		l.current++
-		return true
+		if current >= limit {
+			return false
+		}
+
+		if limiter.current.CompareAndSwap(current, current+1) {
+			if current+1 <= limiter.limit.Load() {
+				return true
+			}
+
+			limiter.release()
+			return false
+		}
 	}
-	return false
 }
 
-func (l *concurrencyLimiter) release() {
-	l.mu.Lock()
-	defer l.mu.Unlock()
+func (limiter *concurrencyLimiter) release() {
+	for {
+		current := limiter.current.Load()
+		if current == 0 {
+			return
+		}
 
-	if l.current > 0 {
-		l.current--
+		if limiter.current.CompareAndSwap(current, current-1) {
+			return
+		}
 	}
 }
 
-func (l *concurrencyLimiter) getLimit() uint64 {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
-	return l.limit
+func (limiter *concurrencyLimiter) limitValue() uint64 {
+	return limiter.limit.Load()
 }
 
-func (l *concurrencyLimiter) setLimit(limit uint64) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	l.limit = limit
+func (limiter *concurrencyLimiter) updateLimit(limit uint64) {
+	limiter.limit.Store(limit)
 }
 
-func (l *concurrencyLimiter) getCurrent() uint64 {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
-	return l.current
+func (limiter *concurrencyLimiter) currentValue() uint64 {
+	return limiter.current.Load()
 }

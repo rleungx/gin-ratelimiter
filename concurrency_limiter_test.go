@@ -9,53 +9,53 @@ import (
 func TestConcurrencyLimiter(t *testing.T) {
 	t.Parallel()
 
-	re := require.New(t)
-	cl := newConcurrencyLimiter(10)
+	assertions := require.New(t)
+	limiter := newConcurrencyLimiter(10)
 
 	// Test allowing up to the limit
 	for range 10 {
-		re.True(cl.allow())
+		assertions.True(limiter.tryAcquire())
 	}
-	re.False(cl.allow())
+	assertions.False(limiter.tryAcquire())
 
 	// Test releasing and allowing again
-	cl.release()
-	re.True(cl.allow())
+	limiter.release()
+	assertions.True(limiter.tryAcquire())
 
 	// Test getting and setting the limit
-	re.Equal(uint64(10), cl.getLimit())
-	cl.setLimit(5)
-	re.Equal(uint64(5), cl.getLimit())
+	assertions.Equal(uint64(10), limiter.limitValue())
+	limiter.updateLimit(5)
+	assertions.Equal(uint64(5), limiter.limitValue())
 
 	// Test getting the current count
-	re.Equal(uint64(10), cl.getCurrent())
-	cl.release()
-	re.Equal(uint64(9), cl.getCurrent())
+	assertions.Equal(uint64(10), limiter.currentValue())
+	limiter.release()
+	assertions.Equal(uint64(9), limiter.currentValue())
 
 	// Test setting limit to zero
-	cl.setLimit(0)
-	re.False(cl.allow())
-	re.Equal(uint64(0), cl.getLimit())
+	limiter.updateLimit(0)
+	assertions.False(limiter.tryAcquire())
+	assertions.Equal(uint64(0), limiter.limitValue())
 
 	// Test setting limit to a very high value
-	cl.setLimit(^uint64(0)) // Max uint64 value
+	limiter.updateLimit(^uint64(0)) // Max uint64 value
 	for range 100 {
-		re.True(cl.allow())
+		assertions.True(limiter.tryAcquire())
 	}
-	re.Equal(uint64(109), cl.getCurrent()) // 9 from previous tests + 100
+	assertions.Equal(uint64(109), limiter.currentValue()) // 9 from previous tests + 100
 
 	// Test releasing all
 	for range 109 {
-		cl.release()
+		limiter.release()
 	}
-	re.Equal(uint64(0), cl.getCurrent())
+	assertions.Equal(uint64(0), limiter.currentValue())
 
 	// Additional edge cases
 	// Test releasing when current is zero
-	cl.release()
-	re.Equal(uint64(0), cl.getCurrent())
+	limiter.release()
+	assertions.Equal(uint64(0), limiter.currentValue())
 
-	// Test setting limit to a negative value (should be handled gracefully)
-	cl.setLimit(^uint64(0) - 1)
-	re.Equal(^uint64(0)-1, cl.getLimit())
+	// Test setting limit close to the uint64 upper bound.
+	limiter.updateLimit(^uint64(0) - 1)
+	assertions.Equal(^uint64(0)-1, limiter.limitValue())
 }
