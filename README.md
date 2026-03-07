@@ -3,19 +3,9 @@
 [![Run Tests](https://github.com/rleungx/gin-ratelimiter/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/rleungx/gin-ratelimiter/actions/workflows/go.yml)
 [![codecov](https://codecov.io/gh/rleungx/gin-ratelimiter/branch/main/graph/badge.svg)](https://codecov.io/gh/rleungx/gin-ratelimiter)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rleungx/gin-ratelimiter)](https://goreportcard.com/report/github.com/rleungx/gin-ratelimiter)
-[![GoDoc](https://godoc.org/github.com/rleungx/gin-ratelimiter?status.svg)](https://godoc.org/github.com/rleungx/gin-ratelimiter)
+[![Go Reference](https://pkg.go.dev/badge/github.com/rleungx/gin-ratelimiter.svg)](https://pkg.go.dev/github.com/rleungx/gin-ratelimiter)
 
 Gin middleware for per-route rate limiting and concurrency limiting.
-
-## Add Dependency
-
-```bash
-go get github.com/rleungx/gin-ratelimiter@latest
-```
-
-```go
-import ratelimiter "github.com/rleungx/gin-ratelimiter"
-```
 
 ## Usage
 
@@ -31,12 +21,15 @@ import (
 
 func main() {
 	router := gin.New()
+	// Reuse one limiter instance so limits can be updated at runtime.
 	limiter := ratelimiter.New()
 
 	router.GET(
 		"/ping",
 		limiter.Middleware(
+			// Allow 3 requests per second with a burst of 3.
 			ratelimiter.WithRateLimit(3, 3),
+			// Allow only 1 in-flight request for this route.
 			ratelimiter.WithConcurrencyLimit(1),
 		),
 		func(c *gin.Context) {
@@ -57,4 +50,4 @@ limiter.UpdateConcurrencyLimit("/jobs", 10)
 
 Use the Gin route pattern when updating limits, for example `/users/:id`.
 
-See `examples/main.go` for a runnable example.
+See [`examples/main.go`](./examples/main.go) for a runnable example.

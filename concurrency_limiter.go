@@ -25,6 +25,7 @@ func (limiter *concurrencyLimiter) tryAcquire() bool {
 		}
 
 		if limiter.current.CompareAndSwap(current, current+1) {
+			// Recheck after the CAS in case the limit was lowered concurrently.
 			if current+1 <= limiter.limit.Load() {
 				return true
 			}
