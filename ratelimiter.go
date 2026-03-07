@@ -1,3 +1,4 @@
+// Package ratelimiter provides Gin middleware for per-route rate and concurrency limiting.
 package ratelimiter
 
 import (
@@ -44,23 +45,6 @@ func (limiter *Limiter) Middleware(opts ...Option) gin.HandlerFunc {
 	}
 }
 
-func (limiter *Limiter) allowRequest(path string) (*concurrencyLimiter, bool) {
-	concurrencyLimiter, exists := limiter.loadConcurrencyLimiter(path)
-	if exists && !concurrencyLimiter.tryAcquire() {
-		return nil, false
-	}
-
-	rateLimiter, exists := limiter.loadRateLimiter(path)
-	if exists && !rateLimiter.Allow() {
-		if concurrencyLimiter != nil {
-			concurrencyLimiter.release()
-		}
-		return nil, false
-	}
-
-	return concurrencyLimiter, true
-}
-
 // UpdateRateLimit updates the rate limiter for path. If the route does not yet
 // have a rate limiter, one is created with the provided settings.
 func (limiter *Limiter) UpdateRateLimit(path string, limit rate.Limit, burst int) {
@@ -103,6 +87,24 @@ func (limiter *Limiter) ConcurrencyLimitStatus(path string) (uint64, uint64) {
 	}
 
 	return 0, 0
+}
+
+func (limiter *Limiter) allowRequest(path string) (*concurrencyLimiter, bool) {
+	concurrencyLimiter, exists := limiter.loadConcurrencyLimiter(path)
+	if exists && !concurrencyLimiter.tryAcquire() {
+		return nil, false
+	}
+
+	rateLimiter, exists := limiter.loadRateLimiter(path)
+	if exists && !rateLimiter.Allow() {
+		if concurrencyLimiter != nil {
+			concurrencyLimiter.release()
+		}
+
+		return nil, false
+	}
+
+	return concurrencyLimiter, true
 }
 
 func (limiter *Limiter) ensureRateLimiter(path string, limit rate.Limit, burst int) *rate.Limiter {

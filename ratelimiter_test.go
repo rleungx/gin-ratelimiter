@@ -30,11 +30,9 @@ func TestUpdateConcurrencyLimit(t *testing.T) {
 
 	var waitGroup sync.WaitGroup
 	for range 10 {
-		waitGroup.Add(1)
-		go func() {
-			defer waitGroup.Done()
+		waitGroup.Go(func() {
 			assertResponseCode(assertions, router, request, http.StatusNoContent)
-		}()
+		})
 	}
 	time.Sleep(200 * time.Millisecond)
 	assertResponseCode(assertions, router, request, http.StatusTooManyRequests)
@@ -49,11 +47,9 @@ func TestUpdateConcurrencyLimit(t *testing.T) {
 	assertions.Equal(uint64(0), current)
 
 	for range 5 {
-		waitGroup.Add(1)
-		go func() {
-			defer waitGroup.Done()
+		waitGroup.Go(func() {
 			assertResponseCode(assertions, router, request, http.StatusNoContent)
-		}()
+		})
 	}
 	time.Sleep(200 * time.Millisecond)
 	assertResponseCode(assertions, router, request, http.StatusTooManyRequests)
@@ -79,11 +75,9 @@ func TestUpdateConcurrencyLimit(t *testing.T) {
 	assertions.NoError(err)
 
 	for range 3 {
-		waitGroup.Add(1)
-		go func() {
-			defer waitGroup.Done()
+		waitGroup.Go(func() {
 			assertResponseCode(assertions, router, request, http.StatusNoContent)
-		}()
+		})
 	}
 	time.Sleep(200 * time.Millisecond)
 	assertResponseCode(assertions, router, request, http.StatusTooManyRequests)
@@ -192,11 +186,9 @@ func TestReleaseConcurrencyLimit(t *testing.T) {
 
 	var waitGroup sync.WaitGroup
 	for range 3 {
-		waitGroup.Add(1)
-		go func() {
-			defer waitGroup.Done()
+		waitGroup.Go(func() {
 			assertResponseCode(assertions, router, request, http.StatusNoContent)
-		}()
+		})
 	}
 	time.Sleep(200 * time.Millisecond)
 	assertResponseCode(assertions, router, request, http.StatusTooManyRequests)
