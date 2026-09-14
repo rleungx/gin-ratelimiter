@@ -47,32 +47,27 @@ func (limiter *Limiter) Middleware(opts ...Option) gin.HandlerFunc {
 
 // UpdateRateLimit updates the rate limiter for path. If the route does not yet
 // have a rate limiter, one is created with the provided settings.
+// Existing buckets retain their state, and rate and burst are updated together.
 func (limiter *Limiter) UpdateRateLimit(path string, limit rate.Limit, burst int) {
-	if rateLimiter, exists := limiter.loadRateLimiter(path); exists {
-		rateLimiter.SetLimit(limit)
-		rateLimiter.SetBurst(burst)
-		return
+	if rateLimiter, loaded := limiter.ensureRateLimiter(path, limit, burst); loaded {
+		rateLimiter.updateLimit(limit, burst)
 	}
-
-	limiter.rateLimiters.Store(path, rate.NewLimiter(limit, burst))
 }
 
 // UpdateConcurrencyLimit updates the concurrency limiter for path. If the route
 // does not yet have a concurrency limiter, one is created with the provided limit.
+// Updating a route preserves its in-flight request count.
 func (limiter *Limiter) UpdateConcurrencyLimit(path string, limit uint64) {
-	if concurrencyLimiter, exists := limiter.loadConcurrencyLimiter(path); exists {
+	if concurrencyLimiter, loaded := limiter.ensureConcurrencyLimiter(path, limit); loaded {
 		concurrencyLimiter.updateLimit(limit)
-		return
 	}
-
-	limiter.concurrencyLimiters.Store(path, newConcurrencyLimiter(limit))
 }
 
 // RateLimitStatus returns the configured rate and burst for path.
 // It returns zero values when the route has no rate limiter.
 func (limiter *Limiter) RateLimitStatus(path string) (rate.Limit, int) {
 	if rateLimiter, exists := limiter.loadRateLimiter(path); exists {
-		return rateLimiter.Limit(), rateLimiter.Burst()
+		return rateLimiter.status()
 	}
 
 	return 0, 0
@@ -96,7 +91,7 @@ func (limiter *Limiter) allowRequest(path string) (*concurrencyLimiter, bool) {
 	}
 
 	rateLimiter, exists := limiter.loadRateLimiter(path)
-	if exists && !rateLimiter.Allow() {
+	if exists && !rateLimiter.allow() {
 		if concurrencyLimiter != nil {
 			concurrencyLimiter.release()
 		}
@@ -107,33 +102,35 @@ func (limiter *Limiter) allowRequest(path string) (*concurrencyLimiter, bool) {
 	return concurrencyLimiter, true
 }
 
-func (limiter *Limiter) ensureRateLimiter(path string, limit rate.Limit, burst int) *rate.Limiter {
+// ensureRateLimiter returns the route's limiter and whether it already existed.
+func (limiter *Limiter) ensureRateLimiter(path string, limit rate.Limit, burst int) (*rateLimiter, bool) {
 	if existingLimiter, exists := limiter.loadRateLimiter(path); exists {
-		return existingLimiter
+		return existingLimiter, true
 	}
 
-	newLimiter := rate.NewLimiter(limit, burst)
-	actualLimiter, _ := limiter.rateLimiters.LoadOrStore(path, newLimiter)
-	return actualLimiter.(*rate.Limiter)
+	newLimiter := newRateLimiter(limit, burst)
+	actualLimiter, loaded := limiter.rateLimiters.LoadOrStore(path, newLimiter)
+	return actualLimiter.(*rateLimiter), loaded
 }
 
-func (limiter *Limiter) ensureConcurrencyLimiter(path string, limit uint64) *concurrencyLimiter {
+// ensureConcurrencyLimiter returns the route's limiter and whether it already existed.
+func (limiter *Limiter) ensureConcurrencyLimiter(path string, limit uint64) (*concurrencyLimiter, bool) {
 	if existingLimiter, exists := limiter.loadConcurrencyLimiter(path); exists {
-		return existingLimiter
+		return existingLimiter, true
 	}
 
 	newLimiter := newConcurrencyLimiter(limit)
-	actualLimiter, _ := limiter.concurrencyLimiters.LoadOrStore(path, newLimiter)
-	return actualLimiter.(*concurrencyLimiter)
+	actualLimiter, loaded := limiter.concurrencyLimiters.LoadOrStore(path, newLimiter)
+	return actualLimiter.(*concurrencyLimiter), loaded
 }
 
-func (limiter *Limiter) loadRateLimiter(path string) (*rate.Limiter, bool) {
+func (limiter *Limiter) loadRateLimiter(path string) (*rateLimiter, bool) {
 	rawLimiter, exists := limiter.rateLimiters.Load(path)
 	if !exists {
 		return nil, false
 	}
 
-	return rawLimiter.(*rate.Limiter), true
+	return rawLimiter.(*rateLimiter), true
 }
 
 func (limiter *Limiter) loadConcurrencyLimiter(path string) (*concurrencyLimiter, bool) {
